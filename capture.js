@@ -6,7 +6,11 @@ const CHUNK_CSS_HEIGHT = 4000; // 1回に撮る高さ（CSS px）。GPU の上�
 const MAX_CANVAS_SIDE = 32000; // キャンバスの1辺の上限（px）
 const MAX_CANVAS_AREA = 250_000_000; // キャンバスの面積の上限（px）
 
-export async function captureFullPage(tabId, onProgress = () => {}) {
+// hooks.onProgress(text)：進み具合を知らせる
+// hooks.beforeShots()：撮る直前に呼ぶ（ページに出している案内を隠す）。終わるまで待つ
+// hooks.afterShots()：撮り終わったら呼ぶ（失敗したときも呼ぶ）
+export async function captureFullPage(tabId, hooks = {}) {
+  const { onProgress = () => {}, beforeShots = async () => {}, afterShots = async () => {} } = hooks;
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
   const send = (method, params = {}) =>
@@ -47,20 +51,25 @@ export async function captureFullPage(tabId, onProgress = () => {}) {
     const ctx = canvas.getContext("2d");
 
     const total = Math.ceil(height / CHUNK_CSS_HEIGHT);
-    for (let i = 0; i < total; i++) {
-      const y = i * CHUNK_CSS_HEIGHT;
-      const h = Math.min(CHUNK_CSS_HEIGHT, height - y);
-      onProgress(`撮影中… ${Math.round((i / total) * 100)}%`);
+    await beforeShots();
+    try {
+      for (let i = 0; i < total; i++) {
+        const y = i * CHUNK_CSS_HEIGHT;
+        const h = Math.min(CHUNK_CSS_HEIGHT, height - y);
+        onProgress(`撮影中… ${Math.round((i / total) * 100)}%`);
 
-      const shot = await send("Page.captureScreenshot", {
-        format: "png",
-        captureBeyondViewport: true,
-        fromSurface: true,
-        clip: { x: 0, y, width, height: h, scale },
-      });
-      const bitmap = await createImageBitmap(base64ToBlob(shot.data, "image/png"));
-      ctx.drawImage(bitmap, 0, Math.round(y * dpr * scale));
-      bitmap.close();
+        const shot = await send("Page.captureScreenshot", {
+          format: "png",
+          captureBeyondViewport: true,
+          fromSurface: true,
+          clip: { x: 0, y, width, height: h, scale },
+        });
+        const bitmap = await createImageBitmap(base64ToBlob(shot.data, "image/png"));
+        ctx.drawImage(bitmap, 0, Math.round(y * dpr * scale));
+        bitmap.close();
+      }
+    } finally {
+      await afterShots();
     }
 
     onProgress("画像を作成中…");
@@ -101,14 +110,14 @@ function base64ToBlob(b64, type) {
   return new Blob([bytes], { type });
 }
 
-export async function blobToDataUrl(blob) {
+export async function blobToBase64(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = "";
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
     bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
   }
-  return `data:${blob.type};base64,` + btoa(bin);
+  return btoa(bin);
 }
 
 export function makeFilename(url) {
