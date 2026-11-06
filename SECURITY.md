@@ -8,6 +8,7 @@ Full Page Screenshotの脆弱性を見つけたときの報告先と、報告の
 
 使う権限と、その理由は次のとおり。
 
+- `activeTab`、`scripting`：アイコンが押されたタブにだけ、トップバーを出すため
 - `debugger`：ページ全体を描画して撮るため（DevTools Protocolの`Page.captureScreenshot`）。撮るときだけ開いているタブにつなぎ、終わったら外す
 - `downloads`：PNGを保存するため
 - `clipboardWrite`：画像をクリップボードに入れるため
